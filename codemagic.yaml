@@ -11,7 +11,7 @@ workflows:
         provisioning_profiles:
           - car_pr
         certificates:
-          - shmuel
+          - car_ce
         bundle_identifier: find.car
 
     scripts:
