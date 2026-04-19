@@ -7,14 +7,18 @@ workflows:
       flutter: stable
       xcode: latest
       cocoapods: default
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.example.findCar2
+        provisioning_profile: car_pr
+        certificate: shmuel
 
     scripts:
       - name: Install dependencies
         script: flutter pub get
 
-      - name: Build iOS (no signing)
-        script: flutter build ios --release --no-codesign
+      - name: Build iOS (signed)
+        script: flutter build ipa --release
 
     artifacts:
-      - build/ios/iphoneos/**/*.app
-      - build/ios/**/*.app
+      - build/ios/ipa/*.ipa
