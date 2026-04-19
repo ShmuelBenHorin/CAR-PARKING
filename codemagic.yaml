@@ -12,12 +12,6 @@ workflows:
       - name: Install dependencies
         script: flutter pub get
 
-      - name: Build Android APK
-        script: flutter build apk --release
-
-      - name: Build Android App Bundle
-        script: flutter build appbundle --release
-
       - name: Build iOS (no signing)
         script: flutter build ios --release --no-codesign
 
