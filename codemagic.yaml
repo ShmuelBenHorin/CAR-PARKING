@@ -10,8 +10,10 @@ workflows:
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.example.findCar2
-        provisioning_profile: car_pr
-        certificate: shmuel
+        provisioning_profiles:
+          - car_pr
+        certificates:
+          - shmuel
 
     scripts:
       - name: Install dependencies
