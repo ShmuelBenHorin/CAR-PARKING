@@ -20,8 +20,12 @@ workflows:
 
       - name: Build iOS (signed)
         script: |
+          flutter pub get
           xcode-project use-profiles
-          flutter build ipa --release
+          flutter build ios --release --no-codesign
+          xcode-project build-ipa \
+            --workspace ios/Runner.xcworkspace \
+            --scheme Runner
 
     artifacts:
       - build/ios/ipa/*.ipa
