@@ -1,6 +1,6 @@
 workflows:
-  ios-android-workflow:
-    name: iOS & Android Build
+  ios-workflow:
+    name: iOS Build
     max_build_duration: 60
 
     environment:
@@ -20,7 +20,6 @@ workflows:
 
       - name: Build iOS (signed)
         script: |
-          flutter pub get
           xcode-project use-profiles
           flutter build ios --release --no-codesign
           xcode-project build-ipa \
