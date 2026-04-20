@@ -19,7 +19,9 @@ workflows:
         script: flutter pub get
 
       - name: Build iOS (signed)
-        script: flutter build ipa --release
+        script: |
+          xcode-project use-profiles
+          flutter build ipa --release
 
     artifacts:
       - build/ios/ipa/*.ipa
