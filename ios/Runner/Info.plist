@@ -3,15 +3,15 @@
 <plist version="1.0">
 <dict>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>האפליקציה צריכה את המיקום שלך כדי לשמור את מקום החניה.</string>
+	<string>Find Car needs your location to save your parking spot.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>האפליקציה צריכה את המיקום שלך כדי לשמור את מקום החניה.</string>
+	<string>Find Car needs your location to save your parking spot.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Find Car2</string>
+	<string>Find Car</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>

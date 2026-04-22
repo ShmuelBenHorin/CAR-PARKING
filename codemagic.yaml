@@ -20,6 +20,9 @@ workflows:
       - name: Install dependencies
         script: flutter pub get
 
+      - name: Generate app icons
+        script: dart run flutter_launcher_icons
+
       - name: Build iOS (signed)
         script: |
           xcode-project use-profiles

@@ -1,7 +1,9 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -255,6 +257,38 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       if (_hasSavedSpot && _savedAt != null) ...[
                         const SizedBox(height: 8),
                         Text(_timeAgo(), style: const TextStyle(fontSize: 13, color: Colors.black38)),
+                      ],
+                      if (_hasSavedSpot && _savedLat != null && _savedLng != null) ...[
+                        const SizedBox(height: 20),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(16),
+                          child: SizedBox(
+                            height: 200,
+                            child: FlutterMap(
+                              options: MapOptions(
+                                initialCenter: LatLng(_savedLat!, _savedLng!),
+                                initialZoom: 16,
+                                interactionOptions: const InteractionOptions(flags: InteractiveFlag.none),
+                              ),
+                              children: [
+                                TileLayer(
+                                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                                  userAgentPackageName: 'find.car',
+                                ),
+                                MarkerLayer(
+                                  markers: [
+                                    Marker(
+                                      point: LatLng(_savedLat!, _savedLng!),
+                                      width: 40,
+                                      height: 40,
+                                      child: const Icon(Icons.directions_car, color: Colors.black, size: 36),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                       ],
                       if (_permissionError != null) ...[
                         const SizedBox(height: 16),
