@@ -38,6 +38,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   bool _isHebrew = false;
   bool _hasSavedSpot = false;
   bool _isSaving = false;
+  bool _mapReady = false;
   double? _savedLat;
   double? _savedLng;
   DateTime? _savedAt;
@@ -45,6 +46,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   late AnimationController _pulseController;
   late Animation<double> _pulseAnim;
+  late MapController _mapController;
 
   @override
   void initState() {
@@ -53,12 +55,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _isHebrew = locale == 'he' || locale == 'iw';
     _pulseController = AnimationController(vsync: this, duration: const Duration(seconds: 2))..repeat(reverse: true);
     _pulseAnim = Tween<double>(begin: 0.95, end: 1.05).animate(CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut));
+    _mapController = MapController();
     _loadSavedSpot();
   }
 
   @override
   void dispose() {
     _pulseController.dispose();
+    _mapController.dispose();
     super.dispose();
   }
 
@@ -87,7 +91,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
 
     LocationPermission permission = await Geolocator.checkPermission();
-
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
@@ -141,7 +144,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _saveSpot() async {
-    setState(() { _isSaving = true; _permissionError = null; });
+    setState(() { _isSaving = true; _permissionError = null; _mapReady = false; });
 
     final hasPermission = await _handleLocationPermission();
     if (!hasPermission) {
@@ -167,33 +170,114 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       });
     } catch (e) {
       setState(() {
-        _permissionError = _isHebrew
-            ? 'אין קליטה.'
-            : 'Could not get location. no signal.';
+        _permissionError = _isHebrew ? 'אין קליטה.' : 'Could not get location. No signal.';
         _isSaving = false;
       });
     }
   }
 
+  // ─── ניווט: שואל את המשתמש Waze או Google Maps ───────────────────────────
   Future<void> _navigate() async {
     if (_savedLat == null || _savedLng == null) return;
     if (!kIsWeb) HapticFeedback.mediumImpact();
+
     final wazeUrl = 'waze://?ll=$_savedLat,$_savedLng&navigate=yes';
     final googleUrl = 'https://www.google.com/maps/dir/?api=1&destination=$_savedLat,$_savedLng&travelmode=walking';
-    if (await canLaunchUrl(Uri.parse(wazeUrl))) {
+
+    final wazeAvailable = await canLaunchUrl(Uri.parse(wazeUrl));
+    final googleAvailable = await canLaunchUrl(Uri.parse(googleUrl));
+
+    if (!mounted) return;
+
+    // אם רק אחת זמינה — פותח ישירות
+    if (wazeAvailable && !googleAvailable) {
       await launchUrl(Uri.parse(wazeUrl));
-    } else {
-      await launchUrl(Uri.parse(googleUrl), mode: LaunchMode.externalApplication);
+      return;
     }
+    if (!wazeAvailable && googleAvailable) {
+      await launchUrl(Uri.parse(googleUrl), mode: LaunchMode.externalApplication);
+      return;
+    }
+
+    // שתיהן זמינות — שואל את המשתמש
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40, height: 4,
+                decoration: BoxDecoration(color: Colors.black12, borderRadius: BorderRadius.circular(2)),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                _isHebrew ? 'פתח עם...' : 'Open with...',
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 20),
+              _NavOption(
+                icon: '🚗',
+                label: 'Waze',
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  await launchUrl(Uri.parse(wazeUrl));
+                },
+              ),
+              const SizedBox(height: 12),
+              _NavOption(
+                icon: '🗺️',
+                label: 'Google Maps',
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  await launchUrl(Uri.parse(googleUrl), mode: LaunchMode.externalApplication);
+                },
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _clearSpot() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(_isHebrew ? 'מחיקת מיקום' : 'Clear spot'),
+        content: Text(_isHebrew ? 'חנית במקום חדש?' : 'Did you park somewhere new?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(_isHebrew ? 'ביטול' : 'Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(_isHebrew ? 'כן, מחק' : 'Yes, clear',
+                style: const TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('lat');
     await prefs.remove('lng');
     await prefs.remove('savedAt');
     if (!kIsWeb) HapticFeedback.lightImpact();
-    setState(() { _hasSavedSpot = false; _savedLat = null; _savedLng = null; _savedAt = null; _permissionError = null; });
+    setState(() {
+      _hasSavedSpot = false;
+      _savedLat = null;
+      _savedLng = null;
+      _savedAt = null;
+      _permissionError = null;
+      _mapReady = false;
+    });
   }
 
   String _timeAgo() {
@@ -204,8 +288,197 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return _isHebrew ? 'לפני ${diff.inHours} שעות' : '${diff.inHours}h ago';
   }
 
-  @override
-  Widget build(BuildContext context) {
+  // ─── מסך מפה מלאה עם כפתורים צפים ──────────────────────────────────────
+  Widget _buildMapScreen() {
+    return Stack(
+      children: [
+        // מפה על מסך מלא — נטענת ברקע, מוצגת רק כשמוכנה
+        FlutterMap(
+          mapController: _mapController,
+          options: MapOptions(
+            initialCenter: LatLng(_savedLat!, _savedLng!),
+            initialZoom: 17,
+            interactionOptions: const InteractionOptions(
+              flags: InteractiveFlag.pinchZoom | InteractiveFlag.drag,
+            ),
+            onMapReady: () {
+              setState(() => _mapReady = true);
+            },
+          ),
+          children: [
+            TileLayer(
+              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              userAgentPackageName: 'find.car',
+            ),
+            MarkerLayer(
+              markers: [
+                Marker(
+                  point: LatLng(_savedLat!, _savedLng!),
+                  width: 56,
+                  height: 56,
+                  child: ScaleTransition(
+                    scale: _pulseAnim,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.black,
+                        shape: BoxShape.circle,
+                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.35), blurRadius: 12, offset: const Offset(0, 4))],
+                      ),
+                      child: const Icon(Icons.directions_car, color: Colors.white, size: 28),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+
+        // Loading overlay — נעלם כשהמפה מוכנה
+        if (!_mapReady)
+          Container(
+            color: Colors.white,
+            child: const Center(
+              child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2),
+            ),
+          ),
+
+        // ─── כפתורים צפים עליונים ───
+        SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                // לוגו / שם
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.12), blurRadius: 10, offset: const Offset(0, 2))],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('🚗', style: TextStyle(fontSize: 14)),
+                      const SizedBox(width: 6),
+                      Text(
+                        _isHebrew ? 'הרכב שלי' : 'My Car',
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, letterSpacing: 0.3),
+                      ),
+                    ],
+                  ),
+                ),
+                // כפתורי פעולה עליונים
+                Row(
+                  children: [
+                    // שפה
+                    _FloatingIconBtn(
+                      label: _isHebrew ? 'EN' : 'עב',
+                      onTap: () => setState(() => _isHebrew = !_isHebrew),
+                    ),
+                    const SizedBox(width: 8),
+                    // מרכז מפה
+                    _FloatingIconBtn(
+                      icon: Icons.my_location,
+                      onTap: () {
+                        _mapController.move(LatLng(_savedLat!, _savedLng!), 17);
+                      },
+                    ),
+                    const SizedBox(width: 8),
+                    // מחק
+                    _FloatingIconBtn(
+                      icon: Icons.delete_outline,
+                      onTap: _clearSpot,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        // ─── כפתור ניווט תחתון ───
+        Positioned(
+          bottom: 0,
+          left: 0,
+          right: 0,
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_savedAt != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.92),
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 8)],
+                        ),
+                        child: Text(
+                          '${_isHebrew ? "חנית" : "Saved"} ${_timeAgo()}',
+                          style: const TextStyle(fontSize: 13, color: Colors.black54),
+                        ),
+                      ),
+                    ),
+                  GestureDetector(
+                    onTap: _navigate,
+                    child: Container(
+                      width: double.infinity,
+                      height: 62,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1a73e8),
+                        borderRadius: BorderRadius.circular(18),
+                        boxShadow: [
+                          BoxShadow(color: const Color(0xFF1a73e8).withOpacity(0.45), blurRadius: 20, offset: const Offset(0, 8)),
+                        ],
+                      ),
+                      child: Center(
+                        child: Text(
+                          _isHebrew ? '🗺️  קח אותי לרכב' : '🗺️  Take me to my car',
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.white),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+
+        // שגיאה
+        if (_permissionError != null)
+          Positioned(
+            top: 100,
+            left: 20,
+            right: 20,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.red.shade200),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.location_off, color: Colors.red.shade700, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(_permissionError!, style: TextStyle(fontSize: 13, color: Colors.red.shade700))),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  // ─── מסך ראשי (אין מיקום שמור) ──────────────────────────────────────────
+  Widget _buildHomeScreen() {
     return Directionality(
       textDirection: _isHebrew ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
@@ -236,62 +509,23 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      ScaleTransition(
-                        scale: _hasSavedSpot ? _pulseAnim : const AlwaysStoppedAnimation(1.0),
-                        child: Text(_hasSavedSpot ? '✅' : '🚗', style: const TextStyle(fontSize: 72)),
-                      ),
-                      const SizedBox(height: 20),
+                      const Text('🚗', style: TextStyle(fontSize: 80)),
+                      const SizedBox(height: 24),
                       Text(
-                        _hasSavedSpot ? (_isHebrew ? 'הרכב שמור!' : 'Car saved!') : (_isHebrew ? 'איפה חנית?' : 'Where did you park?'),
-                        style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w500),
+                        _isHebrew ? 'איפה חנית?' : 'Where did you park?',
+                        style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w600),
                         textAlign: TextAlign.center,
                       ),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 12),
                       Text(
-                        _hasSavedSpot
-                            ? (_isHebrew ? 'לחץ על הכפתור הכחול כדי לחזור לרכב' : 'Tap the blue button to go back to your car')
-                            : (_isHebrew ? 'לחץ שמור ברגע שחנית.\nנמצא אותך אחר כך.' : 'Press Save the moment you park.\nWe\'ll find you later.'),
-                        style: const TextStyle(fontSize: 15, color: Colors.black54, height: 1.5),
+                        _isHebrew
+                            ? 'לחץ שמור ברגע שחנית.\nנמצא אותך אחר כך.'
+                            : 'Press Save the moment you park.\nWe\'ll find you later.',
+                        style: const TextStyle(fontSize: 15, color: Colors.black54, height: 1.6),
                         textAlign: TextAlign.center,
                       ),
-                      if (_hasSavedSpot && _savedAt != null) ...[
-                        const SizedBox(height: 8),
-                        Text(_timeAgo(), style: const TextStyle(fontSize: 13, color: Colors.black38)),
-                      ],
-                      if (_hasSavedSpot && _savedLat != null && _savedLng != null) ...[
-                        const SizedBox(height: 20),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(16),
-                          child: SizedBox(
-                            height: 200,
-                            child: FlutterMap(
-                              options: MapOptions(
-                                initialCenter: LatLng(_savedLat!, _savedLng!),
-                                initialZoom: 16,
-                                interactionOptions: const InteractionOptions(flags: InteractiveFlag.none),
-                              ),
-                              children: [
-                                TileLayer(
-                                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                                  userAgentPackageName: 'find.car',
-                                ),
-                                MarkerLayer(
-                                  markers: [
-                                    Marker(
-                                      point: LatLng(_savedLat!, _savedLng!),
-                                      width: 40,
-                                      height: 40,
-                                      child: const Icon(Icons.directions_car, color: Colors.black, size: 36),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
                       if (_permissionError != null) ...[
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 20),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                           decoration: BoxDecoration(
@@ -320,33 +554,30 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     ],
                   ),
                 ),
-                Column(
-                  children: [
-                    if (!_hasSavedSpot)
-                      _BigButton(
-                        label: _isSaving ? (_isHebrew ? 'תופס מיקום...' : 'Getting location...') : (_isHebrew ? '📍  שמור את המיקום שלי' : '📍  Save my spot'),
-                        color: Colors.black,
-                        textColor: Colors.white,
-                        onTap: _isSaving ? null : _saveSpot,
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 40),
+                  child: GestureDetector(
+                    onTap: _isSaving ? null : _saveSpot,
+                    child: Container(
+                      width: double.infinity,
+                      height: 64,
+                      decoration: BoxDecoration(
+                        color: _isSaving ? Colors.black38 : Colors.black,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: _isSaving ? [] : [
+                          BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 20, offset: const Offset(0, 8)),
+                        ],
                       ),
-                    if (_hasSavedSpot) ...[
-                      _BigButton(
-                        label: _isHebrew ? '🗺️  קח אותי לרכב' : '🗺️  Take me to my car',
-                        color: const Color(0xFF1a73e8),
-                        textColor: Colors.white,
-                        onTap: _navigate,
-                      ),
-                      const SizedBox(height: 14),
-                      GestureDetector(
-                        onTap: _clearSpot,
+                      child: Center(
                         child: Text(
-                          _isHebrew ? 'חניתי במקום חדש' : 'Parked somewhere new',
-                          style: const TextStyle(fontSize: 14, color: Colors.black45, decoration: TextDecoration.underline, decorationColor: Colors.black45),
+                          _isSaving
+                              ? (_isHebrew ? 'תופס מיקום...' : 'Getting location...')
+                              : (_isHebrew ? '📍  שמור את המיקום שלי' : '📍  Save my spot'),
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.white),
                         ),
                       ),
-                    ],
-                    const SizedBox(height: 32),
-                  ],
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -355,14 +586,57 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       ),
     );
   }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_hasSavedSpot && _savedLat != null && _savedLng != null) {
+      return Directionality(
+        textDirection: _isHebrew ? TextDirection.rtl : TextDirection.ltr,
+        child: Scaffold(body: _buildMapScreen()),
+      );
+    }
+    return _buildHomeScreen();
+  }
 }
 
-class _BigButton extends StatelessWidget {
+// ─── ווידג'ט כפתור צף עם אייקון ─────────────────────────────────────────────
+class _FloatingIconBtn extends StatelessWidget {
+  final IconData? icon;
+  final String? label;
+  final VoidCallback onTap;
+
+  const _FloatingIconBtn({this.icon, this.label, required this.onTap})
+      : assert(icon != null || label != null);
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 42,
+        height: 42,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.12), blurRadius: 10, offset: const Offset(0, 2))],
+        ),
+        child: Center(
+          child: icon != null
+              ? Icon(icon, size: 20, color: Colors.black87)
+              : Text(label!, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.black87)),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── ווידג'ט אפשרות ניווט ───────────────────────────────────────────────────
+class _NavOption extends StatelessWidget {
+  final String icon;
   final String label;
-  final Color color;
-  final Color textColor;
-  final VoidCallback? onTap;
-  const _BigButton({required this.label, required this.color, required this.textColor, this.onTap});
+  final VoidCallback onTap;
+
+  const _NavOption({required this.icon, required this.label, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -370,12 +644,21 @@ class _BigButton extends StatelessWidget {
       onTap: onTap,
       child: Container(
         width: double.infinity,
-        height: 68,
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
         decoration: BoxDecoration(
-          color: onTap == null ? color.withOpacity(0.4) : color,
-          borderRadius: BorderRadius.circular(20),
+          color: Colors.grey.shade50,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.black12),
         ),
-        child: Center(child: Text(label, style: TextStyle(fontSize: 19, fontWeight: FontWeight.w500, color: textColor))),
+        child: Row(
+          children: [
+            Text(icon, style: const TextStyle(fontSize: 22)),
+            const SizedBox(width: 14),
+            Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+            const Spacer(),
+            const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.black38),
+          ],
+        ),
       ),
     );
   }
