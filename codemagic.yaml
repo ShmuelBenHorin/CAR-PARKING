@@ -2,10 +2,12 @@ workflows:
   ios-workflow:
     name: iOS Build
     max_build_duration: 60
+    instance_type: mac_mini_m1
+
+    integrations:
+      app_store_connect: me
 
     environment:
-      groups:
-        - group
       flutter: stable
       xcode: latest
       cocoapods: default
@@ -36,7 +38,5 @@ workflows:
 
     publishing:
       app_store_connect:
-        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
-        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
-        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+        auth: integration
         submit_to_testflight: true
