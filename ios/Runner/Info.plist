@@ -6,11 +6,6 @@
 	<string>Find Car needs your location to save your parking spot.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>Find Car needs your location to save your parking spot.</string>
-	<key>UIRequiredDeviceCapabilities</key>
-	<array>
-		<string>gps</string>
-		<string>location-services</string>
-	</array>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
