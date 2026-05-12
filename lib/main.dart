@@ -199,9 +199,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     // בונים רשימת אפליקציות זמינות — Apple Maps תמיד קיים באייפון
     final options = <_NavItem>[
-      if (wazeAvailable) _NavItem('🚗', 'Waze', wazeUri),
-      if (googleAvailable) _NavItem('🗺️', 'Google Maps', googleUri),
-      if (isIOS) _NavItem('🍎', 'Apple Maps',
+      if (wazeAvailable) _NavItem('🚗', _isHebrew ? 'וייז' : 'Waze', wazeUri),
+      if (googleAvailable) _NavItem('🗺️', _isHebrew ? 'גוגל מפות' : 'Google Maps', googleUri),
+      if (isIOS) _NavItem('🍎', _isHebrew ? 'אפל מפות' : 'Apple Maps',
           Uri.parse('https://maps.apple.com/?daddr=$lat,$lng&dirflg=w')),
     ];
 
