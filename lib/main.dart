@@ -341,13 +341,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           ],
         ),
 
-        // Loading overlay — נעלם כשהמפה מוכנה
+        // Loading indicator — ספינר קטן בפינה עד שהמפה טעונה
         if (!_mapReady)
-          Container(
-            color: Colors.white,
-            child: const Center(
-              child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2),
-            ),
+          const Positioned(
+            top: 60,
+            right: 20,
+            child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2),
           ),
 
         // ─── כפתור מרכוז מפה גדול (נגיש לזקנים) ───
